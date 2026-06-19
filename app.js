@@ -87,6 +87,15 @@ const shuffle = (arr) => {
   return a;
 };
 
+function isToday(iso) {
+  if (!iso) return false;
+  const d = new Date(iso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+}
+
 function formatDate(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -118,6 +127,7 @@ function svgIcon(name) {
     trash: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`,
     x: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
     sound: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`,
+    repeat: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
   };
   return icons[name] || '';
 }
@@ -154,6 +164,39 @@ const DeckModal = {
     }
     this.close();
     Router.refresh();
+  },
+};
+
+/* ─── 학습 순서 모달 ─── */
+const StudyOrderModal = {
+  _deckId: null,
+  _mode: 'srs',
+
+  open(deckId, mode = 'srs') {
+    this._deckId = deckId;
+    this._mode = mode;
+
+    const saved = localStorage.getItem('studyOrder') || 'random';
+    document.getElementById('order-random').checked = saved === 'random';
+    document.getElementById('order-oldest').checked = saved === 'oldest';
+
+    const titleMap = { srs: '학습 설정', all: '전체 카드 학습', review: '오늘 학습 복습' };
+    document.getElementById('study-modal-title').textContent = titleMap[mode] || '학습 설정';
+
+    const overlay = document.getElementById('study-modal-overlay');
+    overlay.classList.add('open');
+    overlay.removeAttribute('aria-hidden');
+  },
+  close() {
+    const overlay = document.getElementById('study-modal-overlay');
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+  },
+  start() {
+    const order = document.querySelector('input[name="study-order"]:checked')?.value || 'random';
+    localStorage.setItem('studyOrder', order);
+    this.close();
+    initStudy(this._deckId, this._mode);
   },
 };
 
@@ -211,7 +254,16 @@ const Menu = {
 function renderHome() {
   const decks = Storage.getDecks();
   const allCards = Storage.getCards();
-  const now = new Date();
+
+  const youglishBar = `
+    <div class="youglish-bar fade-in">
+      <input type="text" id="youglish-input" class="form-input youglish-input"
+             placeholder="발음을 찾고 싶은 단어를 입력하세요..."
+             autocomplete="off" autocorrect="off" spellcheck="false" />
+      <button class="btn-youglish-search" id="btn-youglish-search">
+        ${svgIcon('sound')} YouGlish 검색
+      </button>
+    </div>`;
 
   if (decks.length === 0) {
     return `
@@ -219,6 +271,7 @@ function renderHome() {
         <h1 class="view-title">내 덱</h1>
         <button class="btn btn-primary" id="btn-new-deck">${svgIcon('plus')} 새 덱 만들기</button>
       </div>
+      ${youglishBar}
       <div class="empty-state fade-in">
         <div class="empty-state-icon">📚</div>
         <div class="empty-state-title">아직 덱이 없습니다</div>
@@ -241,6 +294,7 @@ function renderHome() {
       <h1 class="view-title">내 덱</h1>
       <button class="btn btn-primary" id="btn-new-deck">${svgIcon('plus')} 새 덱</button>
     </div>
+    ${youglishBar}
     <div class="deck-grid fade-in">
       ${deckCards.map(({ deck, total, due }) => `
         <div class="deck-card" data-deck-id="${deck.id}">
@@ -279,7 +333,10 @@ function renderDeckDetail(deckId) {
       </div>
       <div class="deck-detail-actions">
         <button class="btn btn-ghost btn-sm" id="btn-edit-this-deck">수정</button>
-        <button class="btn btn-ghost btn-sm btn-danger-deck" id="btn-delete-deck">삭제</button>
+        <button class="btn btn-ghost btn-sm" id="btn-delete-deck">삭제</button>
+        <button class="btn btn-ghost btn-sm" id="btn-study-all" ${cards.length === 0 ? 'disabled' : ''} title="SRS 무관하게 전체 카드 학습">
+          전체 학습
+        </button>
         <button class="btn btn-study" id="btn-start-study" ${due.length === 0 ? 'disabled' : ''}>
           ${due.length > 0 ? `학습 (${due.length}장)` : '오늘 완료 ✓'}
         </button>
@@ -356,22 +413,48 @@ function renderExampleRow(value, idx) {
 // Study View
 let studyState = null;
 
-function initStudy(deckId) {
+function initStudy(deckId, mode = 'srs') {
   const deck = Storage.getDeck(deckId);
   if (!deck) { Router.go('#home'); return; }
-  const allDue = Storage.getCardsByDeck(deckId).filter((c) => SRS.isDue(c));
-  if (allDue.length === 0) { Router.go(`#done/${deckId}/0/0/0`); return; }
+
+  let cards;
+  if (mode === 'all') {
+    cards = Storage.getCardsByDeck(deckId);
+  } else if (mode === 'review') {
+    cards = Storage.getCardsByDeck(deckId).filter((c) => isToday(c.lastReviewed));
+    if (cards.length === 0) {
+      showToast('오늘 학습한 카드가 없습니다.', 'error');
+      return;
+    }
+  } else {
+    cards = Storage.getCardsByDeck(deckId).filter((c) => SRS.isDue(c));
+  }
+
+  if (cards.length === 0) {
+    Router.go(`#done/${deckId}/0/0/0`);
+    return;
+  }
+
+  const savedOrder = localStorage.getItem('studyOrder') || 'random';
+  const orderedCards = savedOrder === 'oldest'
+    ? [...cards].sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+    : shuffle(cards);
 
   studyState = {
     deckId,
-    queue: shuffle(allDue),
+    mode,
+    applyScore: mode === 'srs',
+    queue: orderedCards,
     done: 0,
     forgot: 0,
     hard: 0,
     easy: 0,
-    totalInitial: allDue.length,
+    totalInitial: orderedCards.length,
     flipped: false,
   };
+
+  Router.currentDeckId = deckId;
+  updateQuickAddBtn('study', deckId);
   renderStudyCard();
 }
 
@@ -380,26 +463,33 @@ function renderStudyCard() {
   const main = document.getElementById('app-main');
   if (!s || s.queue.length === 0) {
     Router.go(`#done/${s.deckId}/${s.done}/${s.forgot}/${s.hard}`);
+    studyState = null;
     return;
   }
 
   const card = s.queue[0];
-  const progress = s.done;
-  const total = s.totalInitial + (s.queue.length - 1) - s.done + s.done;
-  const pct = total > 0 ? Math.round((progress / (progress + s.queue.length)) * 100) : 0;
+  const current = s.done;
+  const displayTotal = current + s.queue.length;
+  const pct = displayTotal > 0 ? Math.round((current / displayTotal) * 100) : 0;
 
-  const previewForgot = SRS.previewInterval(card, 'forgot');
-  const previewHard = SRS.previewInterval(card, 'hard');
-  const previewEasy = SRS.previewInterval(card, 'easy');
+  const modeBadgeMap = { all: '전체 학습', review: '오늘 복습' };
+  const modeBadge = !s.applyScore && modeBadgeMap[s.mode]
+    ? `<span class="study-mode-badge">${modeBadgeMap[s.mode]}</span>`
+    : '';
+
+  const previewForgot = s.applyScore ? SRS.previewInterval(card, 'forgot') : null;
+  const previewHard   = s.applyScore ? SRS.previewInterval(card, 'hard')   : null;
+  const previewEasy   = s.applyScore ? SRS.previewInterval(card, 'easy')   : null;
 
   main.innerHTML = `
     <div class="study-view fade-in">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;">
         <a href="#deck/${s.deckId}" class="back-link" style="margin-bottom:0">${svgIcon('back')} 종료</a>
+        ${modeBadge}
       </div>
       <div class="study-progress">
         <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
-        <div class="progress-text">${progress} / ${progress + s.queue.length}</div>
+        <div class="progress-text">${current} / ${displayTotal}</div>
       </div>
       <div class="flip-card-container">
         <div class="flip-card" id="flip-card">
@@ -425,15 +515,15 @@ function renderStudyCard() {
             <div class="rating-buttons">
               <button class="btn-rating btn-forgot" id="btn-forgot">
                 몰랐어요
-                <span class="interval-hint">${previewForgot}</span>
+                ${previewForgot ? `<span class="interval-hint">${previewForgot}</span>` : ''}
               </button>
               <button class="btn-rating btn-hard" id="btn-hard">
                 애매했어요
-                <span class="interval-hint">${previewHard}</span>
+                ${previewHard ? `<span class="interval-hint">${previewHard}</span>` : ''}
               </button>
               <button class="btn-rating btn-easy" id="btn-easy">
                 잘 알아요
-                <span class="interval-hint">${previewEasy}</span>
+                ${previewEasy ? `<span class="interval-hint">${previewEasy}</span>` : ''}
               </button>
             </div>
           </div>
@@ -465,19 +555,26 @@ function bindStudyEvents() {
     if (!studyState.flipped) { reveal(); return; }
     const s = studyState;
     const card = s.queue.shift();
-    const updated = SRS.apply(card, rating);
-    Storage.updateCard(updated);
 
-    if (rating === 'forgot') {
-      s.queue.push(updated);
-      s.forgot++;
-    } else if (rating === 'hard') {
-      s.queue.splice(Math.min(3, s.queue.length), 0, updated);
-      s.hard++;
-      s.done++;
+    if (s.applyScore) {
+      const updated = SRS.apply(card, rating);
+      Storage.updateCard(updated);
+      if (rating === 'forgot') {
+        s.queue.push(updated);
+        s.forgot++;
+      } else if (rating === 'hard') {
+        s.queue.splice(Math.min(3, s.queue.length), 0, updated);
+        s.hard++;
+        s.done++;
+      } else {
+        s.easy++;
+        s.done++;
+      }
     } else {
-      s.easy++;
       s.done++;
+      if (rating === 'forgot') s.forgot++;
+      else if (rating === 'hard') s.hard++;
+      else s.easy++;
     }
 
     s.flipped = false;
@@ -503,7 +600,6 @@ function bindStudyEvents() {
 function renderDone(deckId, done, forgot, hard) {
   const deck = Storage.getDeck(deckId);
   const deckName = deck ? deck.name : '덱';
-  const total = parseInt(done) + parseInt(forgot);
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -514,11 +610,14 @@ function renderDone(deckId, done, forgot, hard) {
     return r >= tomorrow && r < new Date(tomorrow.getTime() + 86400000);
   }).length;
 
+  const todayReviewed = Storage.getCardsByDeck(deckId).filter((c) => isToday(c.lastReviewed)).length;
+  const totalCards = Storage.getCardsByDeck(deckId).length;
+
   return `
     <div class="done-view fade-in">
       <span class="done-emoji">🎉</span>
       <div class="done-title">학습 완료!</div>
-      <div class="done-subtitle">${escHtml(deckName)} 오늘 학습을 마쳤습니다</div>
+      <div class="done-subtitle">${escHtml(deckName)} 학습을 마쳤습니다</div>
       <div class="done-stats">
         <div class="stat-item">
           <span class="stat-num">${parseInt(done) + parseInt(forgot)}</span>
@@ -541,7 +640,29 @@ function renderDone(deckId, done, forgot, hard) {
         <a href="#deck/${deckId}" class="btn btn-ghost">덱으로 돌아가기</a>
         <a href="#home" class="btn btn-primary">홈으로</a>
       </div>
+      <div class="done-restudy">
+        <div class="done-restudy-label">다시 학습하기</div>
+        <div class="done-restudy-btns">
+          ${todayReviewed > 0 ? `
+            <button class="btn btn-ghost" id="btn-restudy-review">
+              ${svgIcon('repeat')} 오늘 학습 복습 (${todayReviewed}장)
+            </button>` : ''}
+          ${totalCards > 0 ? `
+            <button class="btn btn-ghost" id="btn-restudy-all">
+              ${svgIcon('repeat')} 전체 카드 학습 (${totalCards}장)
+            </button>` : ''}
+        </div>
+      </div>
     </div>`;
+}
+
+function bindDoneEvents(deckId) {
+  document.getElementById('btn-restudy-review')?.addEventListener('click', () => {
+    initStudy(deckId, 'review');
+  });
+  document.getElementById('btn-restudy-all')?.addEventListener('click', () => {
+    initStudy(deckId, 'all');
+  });
 }
 
 /* ─── Router ─── */
@@ -564,22 +685,25 @@ const Router = {
 
     if (view === 'home' || view === '') {
       this.currentDeckId = null;
+      studyState = null;
       main.innerHTML = renderHome();
       bindHomeEvents();
     } else if (view === 'deck') {
       const deckId = parts[1];
       this.currentDeckId = deckId;
+      studyState = null;
       main.innerHTML = renderDeckDetail(deckId);
       bindDeckDetailEvents(deckId);
     } else if (view === 'study') {
       const deckId = parts[1];
       this.currentDeckId = deckId;
       main.innerHTML = '';
-      initStudy(deckId);
+      StudyOrderModal.open(deckId, 'srs');
     } else if (view === 'card') {
       const deckId = parts[1];
       const cardId = parts[2] || null;
       this.currentDeckId = deckId;
+      studyState = null;
       main.innerHTML = renderCardForm(deckId, cardId);
       bindCardFormEvents(deckId, cardId);
     } else if (view === 'done') {
@@ -588,9 +712,12 @@ const Router = {
       const forgot = parts[3] || 0;
       const hard = parts[4] || 0;
       this.currentDeckId = deckId;
+      studyState = null;
       main.innerHTML = renderDone(deckId, done, forgot, hard);
+      bindDoneEvents(deckId);
     } else {
       this.currentDeckId = null;
+      studyState = null;
       main.innerHTML = renderHome();
       bindHomeEvents();
     }
@@ -618,8 +745,7 @@ function bindHomeEvents() {
   document.querySelectorAll('.btn-study-deck').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const id = btn.dataset.deckId;
-      Router.go(`#study/${id}`);
+      StudyOrderModal.open(btn.dataset.deckId, 'srs');
     });
   });
 
@@ -637,10 +763,26 @@ function bindHomeEvents() {
       Router.go(`#deck/${card.dataset.deckId}`);
     });
   });
+
+  // YouGlish 검색바
+  function doYouglishSearch() {
+    const word = document.getElementById('youglish-input')?.value.trim();
+    if (!word) { showToast('단어를 입력해주세요.', 'error'); return; }
+    window.open(`https://youglish.com/pronounce/${encodeURIComponent(word)}/english`, '_blank', 'noopener,noreferrer');
+  }
+  document.getElementById('btn-youglish-search')?.addEventListener('click', doYouglishSearch);
+  document.getElementById('youglish-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doYouglishSearch();
+  });
 }
 
 function bindDeckDetailEvents(deckId) {
-  document.getElementById('btn-start-study')?.addEventListener('click', () => Router.go(`#study/${deckId}`));
+  document.getElementById('btn-start-study')?.addEventListener('click', () => {
+    StudyOrderModal.open(deckId, 'srs');
+  });
+  document.getElementById('btn-study-all')?.addEventListener('click', () => {
+    StudyOrderModal.open(deckId, 'all');
+  });
   document.getElementById('btn-add-card-here')?.addEventListener('click', () => Router.go(`#card/${deckId}`));
 
   document.getElementById('btn-edit-this-deck')?.addEventListener('click', () => {
@@ -684,25 +826,21 @@ function bindDeckDetailEvents(deckId) {
 function bindCardFormEvents(deckId, cardId) {
   let exampleCount = document.querySelectorAll('.example-row').length;
 
-  function getExamplesMax() { return 3; }
-
   document.getElementById('btn-add-example')?.addEventListener('click', () => {
-    if (exampleCount >= getExamplesMax()) return;
+    if (exampleCount >= 3) return;
     const list = document.getElementById('examples-list');
     const div = document.createElement('div');
     div.innerHTML = renderExampleRow('', exampleCount);
     list.appendChild(div.firstElementChild);
     exampleCount++;
-    if (exampleCount >= getExamplesMax()) {
-      document.getElementById('btn-add-example')?.remove();
-    }
+    if (exampleCount >= 3) document.getElementById('btn-add-example')?.remove();
     bindRemoveExampleBtns();
   });
 
   bindRemoveExampleBtns();
 
   document.getElementById('btn-cancel-form')?.addEventListener('click', () => {
-    Router.go(cardId ? `#deck/${deckId}` : `#deck/${deckId}`);
+    Router.go(`#deck/${deckId}`);
   });
 
   document.getElementById('btn-save-card')?.addEventListener('click', () => {
@@ -741,34 +879,26 @@ function bindCardFormEvents(deckId, cardId) {
 function bindRemoveExampleBtns() {
   document.querySelectorAll('.btn-remove-example').forEach((btn) => {
     btn.onclick = () => {
-      const row = btn.closest('.example-row');
-      row?.remove();
+      btn.closest('.example-row')?.remove();
       const list = document.getElementById('examples-list');
-      exampleCount = list?.querySelectorAll('.example-row').length || 0;
-      if (!document.getElementById('btn-add-example') && exampleCount < 3) {
+      const count = list?.querySelectorAll('.example-row').length || 0;
+      if (!document.getElementById('btn-add-example') && count < 3) {
         const addBtn = document.createElement('button');
         addBtn.className = 'btn-add-example';
         addBtn.id = 'btn-add-example';
         addBtn.innerHTML = `${svgIcon('plus')} 예시 추가`;
         list?.after(addBtn);
-        bindCardFormAddExample(list?.closest('.examples-group'), deckId);
+        addBtn.addEventListener('click', () => {
+          const currentCount = list?.querySelectorAll('.example-row').length || 0;
+          if (currentCount >= 3) return;
+          const div = document.createElement('div');
+          div.innerHTML = renderExampleRow('', currentCount);
+          list?.appendChild(div.firstElementChild);
+          if ((list?.querySelectorAll('.example-row').length || 0) >= 3) addBtn.remove();
+          bindRemoveExampleBtns();
+        });
       }
     };
-  });
-}
-
-function bindCardFormAddExample(group) {
-  document.getElementById('btn-add-example')?.addEventListener('click', () => {
-    const list = document.getElementById('examples-list');
-    const count = list?.querySelectorAll('.example-row').length || 0;
-    if (count >= 3) return;
-    const div = document.createElement('div');
-    div.innerHTML = renderExampleRow('', count);
-    list?.appendChild(div.firstElementChild);
-    if ((list?.querySelectorAll('.example-row').length || 0) >= 3) {
-      document.getElementById('btn-add-example')?.remove();
-    }
-    bindRemoveExampleBtns();
   });
 }
 
@@ -784,7 +914,7 @@ function escHtml(str) {
 
 /* ─── Global Event Listeners ─── */
 function initGlobalEvents() {
-  // Modal
+  // 덱 모달
   document.getElementById('modal-close')?.addEventListener('click', () => DeckModal.close());
   document.getElementById('modal-cancel')?.addEventListener('click', () => DeckModal.close());
   document.getElementById('modal-save')?.addEventListener('click', () => DeckModal.save());
@@ -795,7 +925,15 @@ function initGlobalEvents() {
     if (e.key === 'Enter') DeckModal.save();
   });
 
-  // Hamburger menu
+  // 학습 순서 모달
+  document.getElementById('study-modal-close')?.addEventListener('click', () => StudyOrderModal.close());
+  document.getElementById('study-modal-cancel')?.addEventListener('click', () => StudyOrderModal.close());
+  document.getElementById('study-modal-start')?.addEventListener('click', () => StudyOrderModal.start());
+  document.getElementById('study-modal-overlay')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) StudyOrderModal.close();
+  });
+
+  // 햄버거 메뉴
   document.getElementById('btn-hamburger')?.addEventListener('click', () => Menu.toggle());
   document.getElementById('dropdown-overlay')?.addEventListener('click', () => Menu.close());
 
@@ -813,13 +951,13 @@ function initGlobalEvents() {
     e.target.value = '';
   });
 
-  // Router
+  // 라우터
   window.addEventListener('hashchange', () => {
     Menu.close();
     Router.route(window.location.hash);
   });
 
-  // Quick add
+  // 빠른 추가 버튼
   document.getElementById('btn-quick-add')?.addEventListener('click', () => {
     if (Router.currentDeckId) {
       Router.go(`#card/${Router.currentDeckId}`);
@@ -828,10 +966,11 @@ function initGlobalEvents() {
     }
   });
 
-  // Keyboard shortcuts
+  // 키보드 단축키
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       DeckModal.close();
+      StudyOrderModal.close();
       Menu.close();
     }
     if (studyState && studyState.queue.length > 0) {
