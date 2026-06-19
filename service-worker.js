@@ -1,12 +1,12 @@
-const CACHE_NAME = 'wordcards-v4';
+const CACHE_NAME = 'wordcards-v5';
 const STATIC_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './manifest.json',
-  './icons/icon-192.svg',
-  './icons/icon-512.svg',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
   'https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Gowun+Dodum&display=swap'
 ];
 
