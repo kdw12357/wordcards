@@ -36,6 +36,165 @@ const Storage = {
   },
 };
 
+/* ─── Sync ─── */
+const SYNC_URL = 'https://reading-proxy.kdw12357.workers.dev/sync?key=wordcards';
+const SYNC_SECRET_KEY = 'syncSecret';
+let syncState = { status: 'idle', lastSyncedAt: null };
+let studySyncTimer = null;
+
+function getSyncSecret() {
+  return localStorage.getItem(SYNC_SECRET_KEY) || '';
+}
+function setSyncSecret(secret) {
+  localStorage.setItem(SYNC_SECRET_KEY, secret);
+}
+function clearSyncSecret() {
+  localStorage.removeItem(SYNC_SECRET_KEY);
+}
+
+function formatSyncTime(ts) {
+  if (!ts) return '방금';
+  const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+  if (diff < 1) return '방금';
+  if (diff < 60) return `${diff}분 전`;
+  const h = Math.floor(diff / 60);
+  return h < 24 ? `${h}시간 전` : `${Math.floor(h / 24)}일 전`;
+}
+
+function updateSyncStatus(status, ts) {
+  syncState.status = status;
+  if (ts) syncState.lastSyncedAt = ts;
+
+  const dot = document.getElementById('sync-indicator');
+  const textEl = document.getElementById('sync-status-text');
+  if (!dot || !textEl) return;
+
+  const map = {
+    syncing:  { text: '동기화 중...', cls: 'sync-syncing' },
+    synced:   { text: `동기화됨 (${formatSyncTime(syncState.lastSyncedAt)})`, cls: 'sync-ok' },
+    offline:  { text: '오프라인', cls: 'sync-offline' },
+    failed:   { text: '동기화 실패', cls: 'sync-failed' },
+    'no-key': { text: '키 필요', cls: 'sync-nokey' },
+  };
+
+  const info = map[status];
+  if (!info) return;
+  textEl.textContent = info.text;
+  dot.className = `sync-indicator ${info.cls}`;
+}
+
+async function syncFetch() {
+  const res = await fetch(SYNC_URL, { headers: { 'X-Sync-Secret': getSyncSecret() } });
+  if (res.status === 401) { const e = new Error('unauthorized'); e.code = 401; throw e; }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function syncPush() {
+  const res = await fetch(SYNC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Sync-Secret': getSyncSecret() },
+    body: JSON.stringify({ wordcards: { decks: Storage.getDecks(), cards: Storage.getCards() } }),
+  });
+  if (res.status === 401) { const e = new Error('unauthorized'); e.code = 401; throw e; }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function applyServerData(wc) {
+  Storage.saveDecks(wc.decks || []);
+  Storage.saveCards(wc.cards || []);
+  migrateDeckColors();
+}
+
+async function startupSync() {
+  if (!getSyncSecret()) { updateSyncStatus('no-key'); return; }
+
+  updateSyncStatus('syncing');
+  try {
+    const data = await syncFetch();
+    const wc = data.wordcards;
+    if (wc && (Array.isArray(wc.decks) || Array.isArray(wc.cards))) {
+      applyServerData(wc);
+      updateSyncStatus('synced', data.updatedAt);
+      Router.refresh();
+    } else if (Storage.getDecks().length > 0 || Storage.getCards().length > 0) {
+      const result = await syncPush();
+      updateSyncStatus('synced', result.updatedAt);
+    } else {
+      updateSyncStatus('synced', new Date().toISOString());
+    }
+  } catch (err) {
+    if (err.code === 401) {
+      updateSyncStatus('failed');
+      showToast('동기화 비밀 키가 올바르지 않습니다.', 'error');
+      SettingsModal.open();
+    } else {
+      updateSyncStatus('offline');
+    }
+  }
+}
+
+async function manualSync() {
+  if (!getSyncSecret()) {
+    showToast('비밀 키를 먼저 입력해주세요.', 'error');
+    SettingsModal.open();
+    return;
+  }
+
+  updateSyncStatus('syncing');
+  try {
+    const data = await syncFetch();
+    const wc = data.wordcards;
+    if (wc && (Array.isArray(wc.decks) || Array.isArray(wc.cards))) {
+      applyServerData(wc);
+      updateSyncStatus('synced', data.updatedAt);
+      Router.refresh();
+      showToast('동기화 완료', 'success');
+    } else {
+      const result = await syncPush();
+      updateSyncStatus('synced', result.updatedAt);
+      showToast('로컬 데이터를 서버에 업로드했습니다.', 'success');
+    }
+  } catch (err) {
+    if (err.code === 401) {
+      updateSyncStatus('failed');
+      showToast('동기화 실패: 비밀 키를 확인해주세요.', 'error');
+      SettingsModal.open();
+    } else {
+      updateSyncStatus('offline');
+      showToast('동기화 실패: 네트워크를 확인해주세요.', 'error');
+    }
+  }
+}
+
+function syncNow() {
+  if (!getSyncSecret()) return;
+  updateSyncStatus('syncing');
+  syncPush()
+    .then((result) => updateSyncStatus('synced', result.updatedAt))
+    .catch((err) => {
+      updateSyncStatus('failed');
+      showToast(err.code === 401 ? '동기화 실패: 비밀 키를 확인해주세요.' : '동기화 실패 - 로컬에는 저장됐습니다.', 'error');
+    });
+}
+
+function scheduleStudySync() {
+  if (!getSyncSecret()) return;
+  clearTimeout(studySyncTimer);
+  studySyncTimer = setTimeout(() => {
+    studySyncTimer = null;
+    syncNow();
+  }, 5000);
+}
+
+function flushStudySync() {
+  if (!studySyncTimer) return;
+  clearTimeout(studySyncTimer);
+  studySyncTimer = null;
+  syncNow();
+}
+
 /* ─── Pastel Palette ─── */
 const PASTEL_PALETTE = [
   '#FFB3BA','#FFDFBA','#FFFFBA','#BAFFC9','#BAE1FF',
@@ -192,6 +351,7 @@ const DeckModal = {
       Storage.addDeck({ id: uid(), name, description: desc, color, createdAt: new Date().toISOString() });
       showToast('새 덱이 만들어졌습니다.', 'success');
     }
+    syncNow();
     this.close();
     Router.refresh();
   },
@@ -227,6 +387,26 @@ const StudyOrderModal = {
     localStorage.setItem('studyOrder', order);
     this.close();
     initStudy(this._deckId, this._mode);
+  },
+};
+
+/* ─── 동기화 설정 모달 ─── */
+const SettingsModal = {
+  open() {
+    const input = document.getElementById('input-sync-secret');
+    input.value = getSyncSecret();
+    input.type = 'password';
+    document.getElementById('btn-toggle-secret').textContent = '표시';
+
+    const overlay = document.getElementById('settings-modal-overlay');
+    overlay.classList.add('open');
+    overlay.removeAttribute('aria-hidden');
+    setTimeout(() => input.focus(), 50);
+  },
+  close() {
+    const overlay = document.getElementById('settings-modal-overlay');
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
   },
 };
 
@@ -268,6 +448,7 @@ const Menu = {
         const newCards = data.cards.filter((c) => !existingCards.find((ec) => ec.id === c.id));
         Storage.saveDecks([...existingDecks, ...newDecks]);
         Storage.saveCards([...existingCards, ...newCards]);
+        syncNow();
         showToast(`덱 ${newDecks.length}개, 카드 ${newCards.length}개 가져왔습니다.`, 'success');
         Router.refresh();
       } catch (err) {
@@ -494,6 +675,7 @@ function renderStudyCard() {
   const s = studyState;
   const main = document.getElementById('app-main');
   if (!s || s.queue.length === 0) {
+    if (s) flushStudySync();
     Router.go(`#done/${s.deckId}/${s.done}/${s.forgot}/${s.hard}`);
     studyState = null;
     return;
@@ -519,7 +701,7 @@ function renderStudyCard() {
   main.innerHTML = `
     <div class="study-view fade-in"${deckColor ? ` style="--deck-color:${deckColor}"` : ''}>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;">
-        <a href="#deck/${s.deckId}" class="back-link" style="margin-bottom:0">${svgIcon('back')} 종료</a>
+        <a href="#deck/${s.deckId}" class="back-link" id="btn-study-exit" style="margin-bottom:0">${svgIcon('back')} 종료</a>
         ${modeBadge}
       </div>
       <div class="study-progress">
@@ -585,6 +767,7 @@ function bindStudyEvents() {
 
   flipCard?.addEventListener('click', reveal);
   btnReveal?.addEventListener('click', reveal);
+  document.getElementById('btn-study-exit')?.addEventListener('click', () => flushStudySync());
 
   function rate(rating) {
     if (!studyState.flipped) { reveal(); return; }
@@ -594,6 +777,7 @@ function bindStudyEvents() {
     if (s.applyScore) {
       const updated = SRS.apply(card, rating);
       Storage.updateCard(updated);
+      scheduleStudySync();
       if (rating === 'forgot') {
         s.queue.push(updated);
         s.forgot++;
@@ -832,6 +1016,7 @@ function bindDeckDetailEvents(deckId) {
     const msg = `"${deck.name}" 덱과 카드 ${cards.length}장을 모두 삭제할까요?`;
     if (confirm(msg)) {
       Storage.deleteDeck(deckId);
+      syncNow();
       showToast('덱이 삭제되었습니다.');
       Router.go('#home');
     }
@@ -851,6 +1036,7 @@ function bindDeckDetailEvents(deckId) {
       if (!card) return;
       if (confirm(`"${card.front}" 카드를 삭제할까요?`)) {
         Storage.deleteCard(btn.dataset.cardId);
+        syncNow();
         showToast('카드가 삭제되었습니다.');
         Router.refresh();
       }
@@ -903,6 +1089,7 @@ function bindCardFormEvents(deckId, cardId) {
       });
       showToast('카드가 추가되었습니다!', 'success');
     }
+    syncNow();
     Router.go(`#deck/${deckId}`);
   });
 
@@ -986,6 +1173,48 @@ function initGlobalEvents() {
     e.target.value = '';
   });
 
+  document.getElementById('menu-sync')?.addEventListener('click', () => {
+    Menu.close();
+    manualSync();
+  });
+  document.getElementById('menu-settings')?.addEventListener('click', () => {
+    Menu.close();
+    SettingsModal.open();
+  });
+
+  // 동기화 설정 모달
+  document.getElementById('settings-modal-close')?.addEventListener('click', () => SettingsModal.close());
+  document.getElementById('settings-modal-cancel')?.addEventListener('click', () => SettingsModal.close());
+  document.getElementById('settings-modal-overlay')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) SettingsModal.close();
+  });
+  document.getElementById('btn-toggle-secret')?.addEventListener('click', () => {
+    const input = document.getElementById('input-sync-secret');
+    const btn = document.getElementById('btn-toggle-secret');
+    if (input.type === 'password') { input.type = 'text'; btn.textContent = '숨기기'; }
+    else { input.type = 'password'; btn.textContent = '표시'; }
+  });
+  document.getElementById('btn-save-secret')?.addEventListener('click', () => {
+    const secret = document.getElementById('input-sync-secret').value.trim();
+    if (!secret) { showToast('비밀 키를 입력해주세요.', 'error'); return; }
+    setSyncSecret(secret);
+    SettingsModal.close();
+    showToast('비밀 키를 저장했습니다.', 'success');
+    startupSync();
+  });
+  document.getElementById('btn-clear-secret')?.addEventListener('click', () => {
+    if (!confirm('동기화 비밀 키를 삭제할까요?')) return;
+    clearSyncSecret();
+    SettingsModal.close();
+    updateSyncStatus('no-key');
+    showToast('비밀 키를 삭제했습니다.');
+  });
+
+  // 백그라운드 전환 시 대기 중인 학습 동기화 즉시 처리
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushStudySync();
+  });
+
   // 라우터
   window.addEventListener('hashchange', () => {
     Menu.close();
@@ -1006,6 +1235,7 @@ function initGlobalEvents() {
     if (e.key === 'Escape') {
       DeckModal.close();
       StudyOrderModal.close();
+      SettingsModal.close();
       Menu.close();
     }
     if (studyState && studyState.queue.length > 0) {
@@ -1046,6 +1276,7 @@ function init() {
   initGlobalEvents();
   Router.route(window.location.hash || '#home');
   registerSW();
+  startupSync();
 }
 
 document.addEventListener('DOMContentLoaded', init);

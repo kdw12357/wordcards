@@ -23,6 +23,10 @@
     <div class="header-inner">
       <a href="#home" class="app-title">영단어 카드</a>
       <div class="header-actions">
+        <span class="sync-indicator" id="sync-indicator">
+          <span class="sync-dot"></span>
+          <span class="sync-text" id="sync-status-text"></span>
+        </span>
         <button class="btn-icon" id="btn-quick-add" title="카드 빠른 추가" aria-label="카드 추가">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>카드 추가</span>
@@ -42,11 +46,11 @@
     <button class="dropdown-item" id="menu-import">
       <span class="dropdown-icon">📥</span> JSON 가져오기
     </button>
-    <button class="dropdown-item dropdown-item--disabled" title="준비 중">
-      <span class="dropdown-icon">🔄</span> 동기화 <span class="badge-soon">준비 중</span>
+    <button class="dropdown-item" id="menu-sync">
+      <span class="dropdown-icon">🔄</span> 동기화
     </button>
-    <button class="dropdown-item dropdown-item--disabled" title="준비 중">
-      <span class="dropdown-icon">🔑</span> 비밀 키 설정 <span class="badge-soon">준비 중</span>
+    <button class="dropdown-item" id="menu-settings">
+      <span class="dropdown-icon">🔑</span> 비밀 키 설정
     </button>
     <input type="file" id="import-file-input" accept=".json" style="display:none" />
   </div>
@@ -118,6 +122,33 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" id="study-modal-cancel">취소</button>
         <button class="btn btn-primary" id="study-modal-start">학습 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 모달: 동기화 설정 -->
+  <div class="modal-overlay" id="settings-modal-overlay" aria-hidden="true">
+    <div class="modal" id="modal-settings" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+      <div class="modal-header">
+        <h2 class="modal-title" id="settings-modal-title">동기화 설정</h2>
+        <button class="modal-close" id="settings-modal-close" aria-label="닫기">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label" for="input-sync-secret">동기화 비밀 키</label>
+          <div class="sync-secret-row">
+            <input type="password" id="input-sync-secret" class="form-input" placeholder="비밀 키를 입력하세요" autocomplete="off" />
+            <button type="button" class="btn btn-ghost" id="btn-toggle-secret">표시</button>
+          </div>
+          <p class="form-hint">다른 앱과 동일한 비밀 키를 사용합니다. 이 기기에만 저장됩니다.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btn-clear-secret">키 삭제</button>
+        <button class="btn btn-ghost" id="settings-modal-cancel">닫기</button>
+        <button class="btn btn-primary" id="btn-save-secret">저장</button>
       </div>
     </div>
   </div>

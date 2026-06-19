@@ -105,6 +105,49 @@ input, textarea { font-family: var(--font-ui); }
 .btn-menu { padding: 8px 10px; }
 .btn-menu span { display: none; }
 
+/* ─── Sync Indicator ─── */
+.sync-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-muted);
+  flex-shrink: 0;
+}
+.sync-indicator.sync-ok { color: var(--green); }
+.sync-indicator.sync-ok .sync-dot { background: var(--green); }
+.sync-indicator.sync-syncing { color: var(--blue); }
+.sync-indicator.sync-syncing .sync-dot { background: var(--blue); animation: sync-pulse 1s ease-in-out infinite; }
+.sync-indicator.sync-failed { color: var(--red); }
+.sync-indicator.sync-failed .sync-dot { background: var(--red); }
+.sync-indicator.sync-offline { color: var(--ink-muted); }
+.sync-indicator.sync-nokey { color: var(--orange); }
+.sync-indicator.sync-nokey .sync-dot { background: var(--orange); }
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.sync-secret-row { display: flex; gap: 8px; align-items: center; }
+.sync-secret-row .form-input { flex: 1; }
+
+.form-hint {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
 /* ─── Dropdown Menu ─── */
 .dropdown-menu {
   position: fixed;
@@ -1042,6 +1085,7 @@ input, textarea { font-family: var(--font-ui); }
   .app-main { padding: 20px 14px 80px; }
   .btn-icon span { display: none; }
   .btn-icon { padding: 8px; }
+  .sync-text { display: none; }
 
   .deck-grid { grid-template-columns: 1fr; }
 
