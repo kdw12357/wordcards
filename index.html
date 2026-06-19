@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#1B3A2C" />
+  <meta name="theme-color" content="#FFFFFF" />
   <meta name="description" content="간격 반복 학습법으로 영단어를 효율적으로 암기하세요" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="단어카드" />
   <title>영단어 카드</title>
   <link rel="manifest" href="manifest.json" />
@@ -14,7 +14,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Gaegu:wght@400;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Gowun+Dodum&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -24,11 +24,11 @@
       <a href="#home" class="app-title">영단어 카드</a>
       <div class="header-actions">
         <button class="btn-icon" id="btn-quick-add" title="카드 빠른 추가" aria-label="카드 추가">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span>카드 추가</span>
         </button>
         <button class="btn-icon btn-menu" id="btn-hamburger" aria-label="메뉴" aria-expanded="false">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
       </div>
     </div>
@@ -53,9 +53,7 @@
   <div class="dropdown-overlay" id="dropdown-overlay"></div>
 
   <!-- 메인 콘텐츠 영역 -->
-  <main class="app-main" id="app-main">
-    <!-- JS로 렌더링 -->
-  </main>
+  <main class="app-main" id="app-main"></main>
 
   <!-- 모달: 덱 추가/수정 -->
   <div class="modal-overlay" id="modal-overlay" aria-hidden="true">
@@ -74,6 +72,10 @@
         <div class="form-group">
           <label class="form-label" for="deck-desc-input">설명 (선택)</label>
           <input type="text" id="deck-desc-input" class="form-input" placeholder="예: 시험 대비용 핵심 단어 모음" maxlength="100" />
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">덱 색상</label>
+          <div class="color-swatches" id="color-swatches"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -96,14 +98,14 @@
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">학습 순서</label>
           <div class="radio-group">
-            <label class="radio-option" id="radio-random-label">
+            <label class="radio-option">
               <input type="radio" name="study-order" value="random" id="order-random" />
               <div class="radio-text">
                 <span class="radio-title">무작위</span>
                 <span class="radio-desc">매번 다른 순서로 학습</span>
               </div>
             </label>
-            <label class="radio-option" id="radio-oldest-label">
+            <label class="radio-option">
               <input type="radio" name="study-order" value="oldest" id="order-oldest" />
               <div class="radio-text">
                 <span class="radio-title">등록 순서</span>
@@ -115,7 +117,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" id="study-modal-cancel">취소</button>
-        <button class="btn btn-study" id="study-modal-start">학습 시작</button>
+        <button class="btn btn-primary" id="study-modal-start">학습 시작</button>
       </div>
     </div>
   </div>

@@ -36,6 +36,12 @@ const Storage = {
   },
 };
 
+/* ─── Pastel Palette ─── */
+const PASTEL_PALETTE = [
+  '#FFB3BA','#FFDFBA','#FFFFBA','#BAFFC9','#BAE1FF',
+  '#D4BAFF','#B5EAD7','#FFDAC1','#C7CEEA','#F2C4CE',
+];
+
 /* ─── SRS ─── */
 const INTERVALS = [10, 60, 360, 1440, 4320, 10080, 20160, 43200, 129600, 259200, 525600];
 
@@ -135,11 +141,34 @@ function svgIcon(name) {
 /* ─── Modal (Deck) ─── */
 const DeckModal = {
   _editingId: null,
+  _selectedColor: null,
+
+  _renderSwatches(currentColor) {
+    const container = document.getElementById('color-swatches');
+    if (!container) return;
+    container.innerHTML = PASTEL_PALETTE.map((c) => `
+      <button type="button" class="color-swatch${c === currentColor ? ' selected' : ''}"
+              style="background:${c}" data-color="${c}" title="${c}"></button>
+    `).join('');
+    container.querySelectorAll('.color-swatch').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('.color-swatch').forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this._selectedColor = btn.dataset.color;
+      });
+    });
+    this._selectedColor = currentColor;
+  },
+
   open(deck = null) {
     this._editingId = deck ? deck.id : null;
     document.getElementById('modal-title').textContent = deck ? '덱 수정' : '새 덱 만들기';
     document.getElementById('deck-name-input').value = deck ? deck.name : '';
     document.getElementById('deck-desc-input').value = deck ? (deck.description || '') : '';
+
+    const defaultColor = deck?.color || PASTEL_PALETTE[Storage.getDecks().length % PASTEL_PALETTE.length];
+    this._renderSwatches(defaultColor);
+
     const overlay = document.getElementById('modal-overlay');
     overlay.classList.add('open');
     overlay.removeAttribute('aria-hidden');
@@ -154,12 +183,13 @@ const DeckModal = {
     const name = document.getElementById('deck-name-input').value.trim();
     if (!name) { showToast('덱 이름을 입력해주세요.', 'error'); return; }
     const desc = document.getElementById('deck-desc-input').value.trim();
+    const color = this._selectedColor || PASTEL_PALETTE[0];
     if (this._editingId) {
       const deck = Storage.getDeck(this._editingId);
-      Storage.updateDeck({ ...deck, name, description: desc });
+      Storage.updateDeck({ ...deck, name, description: desc, color });
       showToast('덱이 수정되었습니다.', 'success');
     } else {
-      Storage.addDeck({ id: uid(), name, description: desc, createdAt: new Date().toISOString() });
+      Storage.addDeck({ id: uid(), name, description: desc, color, createdAt: new Date().toISOString() });
       showToast('새 덱이 만들어졌습니다.', 'success');
     }
     this.close();
@@ -297,7 +327,7 @@ function renderHome() {
     ${youglishBar}
     <div class="deck-grid fade-in">
       ${deckCards.map(({ deck, total, due }) => `
-        <div class="deck-card" data-deck-id="${deck.id}">
+        <div class="deck-card" data-deck-id="${deck.id}" style="background:${deck.color || '#F3F4F6'}">
           <div class="deck-card-name">${escHtml(deck.name)}</div>
           <div class="deck-card-desc">${escHtml(deck.description || '')}</div>
           <div class="deck-card-stats">
@@ -324,9 +354,11 @@ function renderDeckDetail(deckId) {
   const cards = Storage.getCardsByDeck(deckId);
   const due = cards.filter((c) => SRS.isDue(c));
 
+  const headerColor = deck.color || '#F3F4F6';
+
   return `
     <a href="#home" class="back-link fade-in">${svgIcon('back')} 덱 목록</a>
-    <div class="deck-detail-header fade-in">
+    <div class="deck-detail-header fade-in" style="background:${headerColor}">
       <div class="deck-detail-info">
         <div class="deck-detail-name">${escHtml(deck.name)}</div>
         ${deck.description ? `<div class="deck-detail-desc">${escHtml(deck.description)}</div>` : ''}
@@ -481,8 +513,11 @@ function renderStudyCard() {
   const previewHard   = s.applyScore ? SRS.previewInterval(card, 'hard')   : null;
   const previewEasy   = s.applyScore ? SRS.previewInterval(card, 'easy')   : null;
 
+  const deck = Storage.getDeck(s.deckId);
+  const deckColor = deck?.color || '';
+
   main.innerHTML = `
-    <div class="study-view fade-in">
+    <div class="study-view fade-in"${deckColor ? ` style="--deck-color:${deckColor}"` : ''}>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;">
         <a href="#deck/${s.deckId}" class="back-link" style="margin-bottom:0">${svgIcon('back')} 종료</a>
         ${modeBadge}
@@ -986,6 +1021,16 @@ function initGlobalEvents() {
   });
 }
 
+/* ─── Migration ─── */
+function migrateDeckColors() {
+  const decks = Storage.getDecks();
+  let changed = false;
+  decks.forEach((d, i) => {
+    if (!d.color) { d.color = PASTEL_PALETTE[i % PASTEL_PALETTE.length]; changed = true; }
+  });
+  if (changed) Storage.saveDecks(decks);
+}
+
 /* ─── Service Worker ─── */
 function registerSW() {
   if ('serviceWorker' in navigator) {
@@ -997,6 +1042,7 @@ function registerSW() {
 
 /* ─── Init ─── */
 function init() {
+  migrateDeckColors();
   initGlobalEvents();
   Router.route(window.location.hash || '#home');
   registerSW();

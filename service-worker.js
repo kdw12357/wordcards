@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wordcards-v2';
+const CACHE_NAME = 'wordcards-v3';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -7,7 +7,7 @@ const STATIC_ASSETS = [
   './manifest.json',
   './icons/icon-192.svg',
   './icons/icon-512.svg',
-  'https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Gaegu:wght@400;700&display=swap'
+  'https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Gowun+Dodum&display=swap'
 ];
 
 self.addEventListener('install', (e) => {
