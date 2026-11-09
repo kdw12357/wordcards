@@ -16,7 +16,7 @@
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 20px;
-  --font-en: 'Quicksand', 'Nunito', sans-serif;
+  --font-en: 'Quicksand', 'Nunito', 'Gowun Dodum', sans-serif;
   --font-ko: 'Gowun Dodum', sans-serif;
   --font-ui: var(--font-ko);
   --header-h: 64px;
@@ -865,7 +865,7 @@ input, textarea { font-family: var(--font-ui); }
 }
 .btn-easy:hover { background: #DBEAFE; border-color: var(--blue); }
 
-/* 뜻 보기 버튼 */
+/* 학습할 부분 보기 버튼 */
 .btn-reveal {
   width: 100%;
   padding: 15px;

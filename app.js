@@ -252,6 +252,16 @@ const shuffle = (arr) => {
   return a;
 };
 
+const hasLatin = (str) => /[A-Za-z]/.test(str || '');
+
+// 발음 검색은 영문에만 의미가 있으므로, front/back 중 영문이 있는 쪽을 쓴다.
+// 둘 다 영문이 없으면 null — 호출부에서 버튼 자체를 숨긴다.
+function youglishTerm(card) {
+  if (hasLatin(card.front)) return card.front;
+  if (hasLatin(card.back)) return card.back;
+  return null;
+}
+
 function isToday(iso) {
   if (!iso) return false;
   const d = new Date(iso);
@@ -469,7 +479,7 @@ function renderHome() {
   const youglishBar = `
     <div class="youglish-bar fade-in">
       <input type="text" id="youglish-input" class="form-input youglish-input"
-             placeholder="발음을 찾고 싶은 단어를 입력하세요..."
+             placeholder="발음을 찾고 싶은 영어 단어를 입력하세요..."
              autocomplete="off" autocorrect="off" spellcheck="false" />
       <button class="btn-youglish-search" id="btn-youglish-search">
         ${svgIcon('sound')} YouGlish 검색
@@ -487,7 +497,7 @@ function renderHome() {
         <div class="empty-state-icon">📚</div>
         <div class="empty-state-title">아직 덱이 없습니다</div>
         <div class="empty-state-desc">
-          단어 덱을 만들고 카드를 추가해<br />
+          덱을 만들고 카드를 추가해<br />
           간격 반복 학습을 시작해보세요!
         </div>
         <button class="btn btn-primary" id="btn-new-deck2">${svgIcon('plus')} 첫 덱 만들기</button>
@@ -593,12 +603,12 @@ function renderCardForm(deckId, cardId = null) {
       <div class="form-view-title">${card ? '카드 수정' : '새 카드 추가'}</div>
       <div class="form-card">
         <div class="form-group">
-          <label class="form-label" for="card-front">단어 (영어) <span class="required">*</span></label>
-          <input type="text" id="card-front" class="form-input en" placeholder="예: abandon" value="${escHtml(card ? card.front : '')}" autocomplete="off" autocorrect="off" spellcheck="false" />
+          <label class="form-label" for="card-front">표시할 부분 <span class="required">*</span></label>
+          <input type="text" id="card-front" class="form-input" placeholder="앞면에 보일 내용" value="${escHtml(card ? card.front : '')}" autocomplete="off" autocorrect="off" spellcheck="false" />
         </div>
         <div class="form-group">
-          <label class="form-label" for="card-back">뜻 (한국어) <span class="required">*</span></label>
-          <input type="text" id="card-back" class="form-input" placeholder="예: 버리다, 포기하다" value="${escHtml(card ? card.back : '')}" />
+          <label class="form-label" for="card-back">학습할 부분 <span class="required">*</span></label>
+          <input type="text" id="card-back" class="form-input" placeholder="버튼을 눌러 확인할 내용" value="${escHtml(card ? card.back : '')}" />
         </div>
         <div class="examples-group">
           <span class="examples-label">예시 문장 (선택, 최대 3개)</span>
@@ -681,6 +691,9 @@ function renderStudyCard() {
     return;
   }
 
+  // 새 카드는 항상 앞면부터 — 뒤집힌 상태가 다음 카드로 넘어오지 않게 초기화
+  s.flipped = false;
+
   const card = s.queue[0];
   const current = s.done;
   const displayTotal = current + s.queue.length;
@@ -697,6 +710,7 @@ function renderStudyCard() {
 
   const deck = Storage.getDeck(s.deckId);
   const deckColor = deck?.color || '';
+  const ygTerm = youglishTerm(card);
 
   main.innerHTML = `
     <div class="study-view fade-in"${deckColor ? ` style="--deck-color:${deckColor}"` : ''}>
@@ -725,20 +739,21 @@ function renderStudyCard() {
                   <div class="example-item"><span class="example-bullet">▸</span>${escHtml(ex)}</div>
                 `).join('')}
               </div>` : ''}
-            <a href="https://youglish.com/pronounce/${encodeURIComponent(card.front)}/english"
+            ${ygTerm ? `
+            <a href="https://youglish.com/pronounce/${encodeURIComponent(ygTerm)}/english"
                target="_blank" rel="noopener noreferrer" class="btn-youglish">
               ${svgIcon('sound')} YouGlish 발음 검색
-            </a>
+            </a>` : ''}
             <div class="rating-buttons">
-              <button class="btn-rating btn-forgot" id="btn-forgot">
+              <button class="btn-rating btn-forgot" id="btn-forgot" data-rating="forgot">
                 몰랐어요
                 ${previewForgot ? `<span class="interval-hint">${previewForgot}</span>` : ''}
               </button>
-              <button class="btn-rating btn-hard" id="btn-hard">
+              <button class="btn-rating btn-hard" id="btn-hard" data-rating="hard">
                 애매했어요
                 ${previewHard ? `<span class="interval-hint">${previewHard}</span>` : ''}
               </button>
-              <button class="btn-rating btn-easy" id="btn-easy">
+              <button class="btn-rating btn-easy" id="btn-easy" data-rating="easy">
                 잘 알아요
                 ${previewEasy ? `<span class="interval-hint">${previewEasy}</span>` : ''}
               </button>
@@ -746,73 +761,77 @@ function renderStudyCard() {
           </div>
         </div>
       </div>
-      <button class="btn-reveal" id="btn-reveal" style="${s.flipped ? 'display:none' : ''}">
-        뜻 보기
+      <button class="btn-reveal" id="btn-reveal">
+        학습할 부분 보기
       </button>
     </div>`;
-
-  bindStudyEvents();
 }
 
-function bindStudyEvents() {
-  const flipCard = document.getElementById('flip-card');
+// 카드를 뒤집는다 — 상태는 studyState가, 표시는 클래스가 담당
+function revealStudyCard() {
+  const s = studyState;
+  if (!s || s.flipped) return;
+  s.flipped = true;
+  document.getElementById('flip-card')?.classList.add('flipped');
   const btnReveal = document.getElementById('btn-reveal');
+  if (btnReveal) btnReveal.style.display = 'none';
+}
 
-  function reveal() {
-    if (studyState.flipped) return;
-    studyState.flipped = true;
-    flipCard.classList.add('flipped');
-    if (btnReveal) btnReveal.style.display = 'none';
-  }
+function rateStudyCard(rating) {
+  if (!studyState || studyState.queue.length === 0) return;
+  if (!studyState.flipped) { revealStudyCard(); return; }
+  const s = studyState;
+  const card = s.queue.shift();
 
-  flipCard?.addEventListener('click', reveal);
-  btnReveal?.addEventListener('click', reveal);
-  document.getElementById('btn-study-exit')?.addEventListener('click', () => flushStudySync());
-
-  function rate(rating) {
-    if (!studyState.flipped) { reveal(); return; }
-    const s = studyState;
-    const card = s.queue.shift();
-
-    if (s.applyScore) {
-      const updated = SRS.apply(card, rating);
-      Storage.updateCard(updated);
-      scheduleStudySync();
-      if (rating === 'forgot') {
-        s.queue.push(updated);
-        s.forgot++;
-      } else if (rating === 'hard') {
-        s.queue.splice(Math.min(3, s.queue.length), 0, updated);
-        s.hard++;
-        s.done++;
-      } else {
-        s.easy++;
-        s.done++;
-      }
-    } else {
+  if (s.applyScore) {
+    const updated = SRS.apply(card, rating);
+    Storage.updateCard(updated);
+    scheduleStudySync();
+    if (rating === 'forgot') {
+      s.queue.push(updated);
+      s.forgot++;
+    } else if (rating === 'hard') {
+      s.queue.splice(Math.min(3, s.queue.length), 0, updated);
+      s.hard++;
       s.done++;
-      if (rating === 'forgot') s.forgot++;
-      else if (rating === 'hard') s.hard++;
-      else s.easy++;
+    } else {
+      s.easy++;
+      s.done++;
     }
-
-    s.flipped = false;
-
-    const main = document.getElementById('app-main');
-    main.style.opacity = '0';
-    main.style.transform = 'translateX(20px)';
-    main.style.transition = 'opacity 0.18s, transform 0.18s';
-    setTimeout(() => {
-      main.style.opacity = '';
-      main.style.transform = '';
-      main.style.transition = '';
-      renderStudyCard();
-    }, 180);
+  } else {
+    s.done++;
+    if (rating === 'forgot') s.forgot++;
+    else if (rating === 'hard') s.hard++;
+    else s.easy++;
   }
 
-  document.getElementById('btn-forgot')?.addEventListener('click', () => rate('forgot'));
-  document.getElementById('btn-hard')?.addEventListener('click', () => rate('hard'));
-  document.getElementById('btn-easy')?.addEventListener('click', () => rate('easy'));
+  s.flipped = false;
+
+  const main = document.getElementById('app-main');
+  main.style.opacity = '0';
+  main.style.transform = 'translateX(20px)';
+  main.style.transition = 'opacity 0.18s, transform 0.18s';
+  setTimeout(() => {
+    main.style.opacity = '';
+    main.style.transform = '';
+    main.style.transition = '';
+    renderStudyCard();
+  }, 180);
+}
+
+// 카드 DOM은 매번 새로 그려지므로, 고정 부모(#app-main)에 리스너를 한 번만 붙이고
+// event.target으로 판별한다. 분기가 하나뿐이라 평가 클릭이 뒤집기로 번지지 않는다.
+function handleStudyClick(e) {
+  if (!studyState) return;
+
+  if (e.target.closest('#btn-study-exit')) { flushStudySync(); return; }
+
+  const rateBtn = e.target.closest('.btn-rating');
+  if (rateBtn) { rateStudyCard(rateBtn.dataset.rating); return; }
+
+  if (e.target.closest('.btn-youglish')) return;
+
+  if (e.target.closest('#btn-reveal') || e.target.closest('#flip-card')) revealStudyCard();
 }
 
 // Done View
@@ -1067,8 +1086,8 @@ function bindCardFormEvents(deckId, cardId) {
   document.getElementById('btn-save-card')?.addEventListener('click', () => {
     const front = document.getElementById('card-front').value.trim();
     const back = document.getElementById('card-back').value.trim();
-    if (!front) { showToast('단어를 입력해주세요.', 'error'); return; }
-    if (!back) { showToast('뜻을 입력해주세요.', 'error'); return; }
+    if (!front) { showToast('표시할 부분을 입력해주세요.', 'error'); return; }
+    if (!back) { showToast('학습할 부분을 입력해주세요.', 'error'); return; }
     const examples = [...document.querySelectorAll('.example-input')]
       .map((el) => el.value.trim())
       .filter(Boolean)
@@ -1214,6 +1233,9 @@ function initGlobalEvents() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushStudySync();
   });
+
+  // 학습 화면 클릭 위임 — #app-main은 고정 요소이므로 카드를 새로 그려도 리스너가 살아 있음
+  document.getElementById('app-main')?.addEventListener('click', handleStudyClick);
 
   // 라우터
   window.addEventListener('hashchange', () => {
